@@ -1,205 +1,86 @@
-class SMChart:
-    """Represents a parsed StepMania chart"""
-    
-    def __init__(self, metadata, steps):
-        self.metadata = metadata
-        self.steps = steps  # List of Step objects
-        
-    def get_bpm(self):
-        """Get the BPM for timing calculations"""
-        return self.metadata.get('bpm', 120.0)
-    
-    def get_title(self):
-        """Get song title"""
-        return self.metadata.get('title', 'Unknown')
-        
-    def get_steps_count(self):
-        """Get total number of steps in chart"""
-        return len(self.steps)
+import time
+from re import sub
+from sys import path as syspath
+syspath.append("/Games/DanceDance") #fix imports
 
-class Step:
-    """Represents a single step/note in the chart"""
-    
-    def __init__(self, time_ms, lane, note_type=1):
-        self.time_ms = time_ms      # When the step should be hit (milliseconds)
-        self.lane = lane            # 0=Left, 1=Down, 2=Up, 3=Right
-        self.note_type = note_type  # 1=normal, 2=hold_start, 3=hold_end
-        self.hit = False            # Whether this step has been hit
-        self.visible = False        # Whether this step is currently visible
-    
-    def __repr__(self):
-        lane_names = ['Left', 'Down', 'Up', 'Right']
-        return f"Step({self.time_ms}ms, {lane_names[self.lane]}, type={self.note_type})"
+def calculate_timing(measure, measure_index, bpm, offset) -> list[str]:
+    """
+    calculate time in seconds for each line in the measure:
+    1. BPM       = beats/minute -> BPS = beats/second = BPM/60
+    2. measure   = 4 beats = 4 * 1/4th notes     = 1 note
+    3. 1/256    -> 256 * 1/256th notes           = 1 measure
+    """
+    measure_seconds = 4 * 60/bpm                        # length of measure in seconds
+    note_256        = measure_seconds/256               # length of each 1/256th note in the measure in seconds
+    measure_timing  = measure_seconds * measure_index   # cumulative time summed from previous measures
+    fraction_256    = 256/len(measure)                  # number of 1/256th notes per beat: 1/2nd = 128, 1/4th = 64, etc
 
-class SMParser:
-    def __init__(self):
-        self.difficulties = {
-            "beginner": "Beginner",
-            "easy"    : "Easy", 
-            "medium"  : "Medium",
-            "hard"    : "Hard",
-        }
+    # returns the note/timing pair, if the note exists
+    #print(f"measure_timing: {measure_timing}")
+    #print(f"offset: {offset}")
+    return [measure[i] + ' ' + str(i * note_256 * fraction_256 + measure_timing - offset) for i, is_set in enumerate(measure) if is_set != None]
 
-    def parse_file(self, filepath, difficulty='beginner'):
-        try:
-            with open(filepath, 'r') as f:
-                content = f.read()
-        except Exception as e:
-            print(f"Error reading file {filepath}: {e}")
-            return None
+def convert_note(line: str) -> str:
+    """
+    We don't use Mines, Keysounds, Lifts, or Fake Notes at the moment so we are replacing them 
+    with 0 meaning 'No Note'.
+    M - Mine
+    K - Keysound note (plays keysound)
+    L - Lift note (release foot)
+    F - Fake note (doesn’t judge) 
+    """
+    return sub('4', '2', sub('[MKLF]', '0', line))    #replaces extra notes: M, K, L, F; replaces 4 note
 
-        # Get required metadata from sm file
-        metadata = self._parse_metadata(content)
-        print(metadata)
+def parse_sm_file(sm_file: list[str]):
+    print("parseing")
+    bpm = 0
+    offset = 0
+    note_data = {} # maps difficulty to the note and the corrasponding time segment
+    time_data = []
+    measure = []
+    measure_index = 0
+    current_difficulty = ''
 
-        steps = self._parse_steps(content, difficulty, metadata.get('bpm', 120.0))
-
-        # return SMChart(metadata, steps)
-
-    def _parse_metadata(self, content):
-
-        metadata = {}
-        metadata["title"]  = self._extract_field(content, "TITLE")
-        metadata["artist"] = self._extract_field(content, "ARTIST")
-        metadata["music"]  = self._extract_field(content, "MUSIC")
-
-        bpm_str = self._extract_field(content, "BPMS")
-        if bpm_str:
-            try:
-                if '=' in bpm_str:
-                    metadata["bpm"] = float(bpm_str.split('=')[1])
-                else:
-                    metadata["bpm"] = float(bpm_str)
-            except (ValueError, IndexError) as e:
-                print(f"BPM could not be read from sm file, returned the following Exception: {e}\n - setting BPM to the default value of 120.0")
-                metadata['bpm'] = 120.0
-        else:
-            print(f"BPM could not be found in sm file.\n - setting BPM to the default value of 120.0")
-            metadata['bpm'] = 120.0
-
-        return metadata
-
-    def _extract_field(self, content, field_name):
-        """Extract a field value from .sm content"""
-        pattern = f"#{field_name}:"
-        start_idx = content.find(pattern)
-        if start_idx == -1:
-            return None
-
-        start_idx += len(pattern)
-        end_idx = content.find(';', start_idx)
-        if end_idx == -1:
-            return None
-
-        value = content[start_idx:end_idx].strip()
-        return value if value else None
-
-    def _parse_steps(self, content, bpm, difficulty="beginner"):
-        """Parse step data for specified difficulty"""
-        difficulty_name = self.difficulties.get(difficulty)
-        
-        # Find the NOTES section for the specified difficulty
-        target_section = self._find_notes_sections(content, difficulty_name)
-        if target_section == []:
-            print(f"invalid target_section for difficulty: '{difficulty}'")
-            return []
-        
-        # Parse the step data
-        steps = self._parse_step_data(target_section, bpm)
-        return steps
-
-    def _find_notes_sections(self, content, difficulty):
-        """Find all NOTES sections in the content and return the section with the desired difficulty"""
-        sections = []
-        start_pattern = "#NOTES:"
-        
-        start_idx = 0
-        while True:
-            start_idx = content.find(start_pattern, start_idx)
-            if start_idx == -1:
-                break
-                
-            # Find the end of this section (next # or end of file)
-            end_idx = content.find(';', start_idx)
-            if end_idx == -1:
-                end_idx = len(content)
-            
-            section = content[start_idx:end_idx + 1]
-            sections.append(section)
-            start_idx = end_idx + 1
-            
-        target_section = None
-        for section in sections:
-            if difficulty.lower() in section.lower():
-                target_section = section
-                break
-        
-        if not target_section:
-            print(f"Could not find difficulty '{difficulty}' in chart")
-            return []
-
-        return target_section
-    
-    def _parse_step_data(self, section, bpm):
-        """Parse the actual step notation into Step objects"""
-        steps = []
-        
-        # Split section into lines and find where the step data starts
-        lines = section.split('\n')
-        step_data_started = False
-        measure_lines = []
-        current_measure = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Step data starts after the metadata lines (after the last ':')
-            if ':' in line and not step_data_started:
-                continue
+    for i, line in enumerate(sm_file):
+        line = line.rstrip() # removes trailing newline '\n' and possible trailing whitespace
+        if line.startswith("#OFFSET"):
+            offset = float(line.split(':')[-1].split(';')[0])
+            print(offset)
+        elif line.startswith("#BPMS"):
+            bpm = int(line.split('=')[-1].split(';')[0])
+            print(bpm)
+        elif line.startswith('#NOTES:'): # marks the beginning of each difficulty and its notes
+            measure_index = 0
+            current_difficulty = sm_file[i+3].lstrip(' ').rstrip(':\n') # difficulty always found 3 lines down
+            if current_difficulty not in note_data.keys():
+                note_data[current_difficulty] = []
             else:
-                step_data_started = True
-                
-            # Check if this line contains step data (4 digits for single mode)
-            if len(line) == 4 and all(c in '0123' for c in line):
-                current_measure.append(line)
-            elif line == ',' and current_measure:
-                # End of measure
-                measure_lines.append(current_measure[:])
-                current_measure = []
-            elif line == ';':
-                # End of chart
-                if current_measure:
-                    measure_lines.append(current_measure[:])
-                break
-        
-        # Convert measures to steps with timing
-        ms_per_measure = (60000.0 / bpm) * 4  # 4 beats per measure at given BPM
-        
-        for measure_idx, measure in enumerate(measure_lines):
-            measure_start_ms = measure_idx * ms_per_measure
-            
-            if not measure:
-                continue
-                
-            # Each line in the measure represents a subdivision
-            ms_per_line = ms_per_measure / len(measure)
-            
-            for line_idx, line in enumerate(measure):
-                line_time_ms = measure_start_ms + (line_idx * ms_per_line)
-                
-                # Check each lane (Left, Down, Up, Right)
-                for lane in range(4):
-                    note = int(line[lane])
-                    if note != 0:  # 0 means no step
-                        step = Step(line_time_ms, lane, note)
-                        steps.append(step)
-        
-        # Sort steps by time
-        steps.sort(key=lambda s: s.time_ms)
-        return steps
+                current_difficulty = "2Player_" + current_difficulty
+                note_data[current_difficulty] = []
+            #print(current_difficulty)
+        elif line and not line.startswith((' ', '#', '/', ',', ';')): # individual notes
+            note = convert_note(line)
+            if note[0].isdigit():
+                note_placed = True if any((c in set('1234')) for c in note) else False
+                if note_placed:
+                    measure.append(note) # adds note if found
+                else:
+                    measure.append(None)
+        elif line.startswith((',', ';')): # marks the end of each measure
+            notes_and_timings = calculate_timing(measure, measure_index, bpm, offset)
+            note_data[current_difficulty].extend(notes_and_timings)
+            measure.clear()
+            measure_index += 1
+    return note_data
+
+
+def main():
+    #start_time = time.time()
+    sm_file = open("src/DanceDance/7_colors_full.sm", "r")
+    note_data = parse_sm_file(sm_file.read().splitlines())
+    print(f"Note Data: {note_data}")
+    #end_time = time.time()
+    #print(end_time - start_time)
 
 if __name__ == "__main__":
-    smp = SMParser()
-    smp.parse_file("src/DanceDance/7_Colors.sm")
+    main()
