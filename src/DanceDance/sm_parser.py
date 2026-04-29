@@ -16,9 +16,7 @@ def calculate_timing(measure, measure_index, bpm, offset) -> list[str]:
     fraction_256    = 256/len(measure)                  # number of 1/256th notes per beat: 1/2nd = 128, 1/4th = 64, etc
 
     # returns the note/timing pair, if the note exists
-    #print(f"measure_timing: {measure_timing}")
-    #print(f"offset: {offset}")
-    return [measure[i] + ' ' + str(i * note_256 * fraction_256 + measure_timing - offset) for i, is_set in enumerate(measure) if is_set != None]
+    return [(measure[i], (i * note_256 * fraction_256 + measure_timing - offset)) for i, is_set in enumerate(measure) if is_set != None]
 
 def convert_note(line: str) -> str:
     """
@@ -45,10 +43,10 @@ def parse_sm_file(sm_file: list[str]):
         line = line.rstrip() # removes trailing newline '\n' and possible trailing whitespace
         if line.startswith("#OFFSET"):
             offset = float(line.split(':')[-1].split(';')[0])
-            print(offset)
+            #print(offset)
         elif line.startswith("#BPMS"):
             bpm = int(line.split('=')[-1].split(';')[0])
-            print(bpm)
+            #print(bpm)
         elif line.startswith('#NOTES:'): # marks the beginning of each difficulty and its notes
             measure_index = 0
             current_difficulty = sm_file[i+3].lstrip(' ').rstrip(':\n') # difficulty always found 3 lines down
@@ -67,6 +65,7 @@ def parse_sm_file(sm_file: list[str]):
                 else:
                     measure.append(None)
         elif line.startswith((',', ';')): # marks the end of each measure
+            print("notes_and_timings")
             notes_and_timings = calculate_timing(measure, measure_index, bpm, offset)
             note_data[current_difficulty].extend(notes_and_timings)
             measure.clear()

@@ -2,8 +2,10 @@ import struct
 import thumby
 import time
 import _thread
+from micropython import const
 
 DEBUG = False
+
 
 bufsize = 800 #enough for 6 frames at 30 FPS
 buf1 = bytearray(bufsize)
@@ -14,8 +16,18 @@ data_start = 0
 data_size = 0
 data_pos = 0
 
-#current buffer, pos in buffer, bufsize, current sample, total samples, buf1NeedsFilling, buf2NeedsFilling
-bufstate = bytearray(struct.pack("<IIIIIII", 0, 0, bufsize, 0, 0, 1, 1))
+#current buffer, pos in buffer, bufsize, current sample, total samples, buf1NeedsFilling, buf2NeedsFilling, startTime, runtime
+bufstate = bytearray(struct.pack("<IIIIIIIII", 0, 0, bufsize, 0, 0, 1, 1, 0, 0))
+# TODO: check if these are optimised out
+_CURRENT_BUFFER = const(0)
+_POS_IN_BUFFER = const(1)
+_BUFSIZE = const(2)
+_CURRENT_SAMPLE = const(3)
+_TOTAL_SAMPLES = const(4)
+_BUF1_NEEDS_FILLING = const(5)
+_BUF2_NEEDS_FILLING = const(6)
+_START_TIME = const(7)
+_RUNTIME = const(8)
 
 def parse_wav_header(wav_file):
     """
@@ -50,7 +62,7 @@ def parse_wav_header(wav_file):
             audio_format, num_channels, sample_rate, byte_rate, block_align, bits_per_sample = fmt_info
 
         if chunk_id == b'data':
-            print(f"chunk_id: {chunk_id} chunk_size: {chunk_size}")
+            #print(f"chunk_id: {chunk_id} chunk_size: {chunk_size}")
             data_start_pos = current_pos + 8
             data_size = chunk_size
             data_start = data_start_pos
@@ -96,7 +108,7 @@ def fillbufs():
 
 # CREDIT: Mark Batty
 @micropython.viper
-def audioloop():
+def audioloop(callback):
     from machine import PWM, Pin
     swBuzzer = PWM(Pin(28))
     swBuzzer.freq(100000)
@@ -106,34 +118,41 @@ def audioloop():
     b1:ptr8 = ptr8(buf1)
     b2:ptr8 = ptr8(buf2)
     delay:int = 1000000//8000
-    nexttime:int = int(curtime()) + delay
+    state[_START_TIME] = int(curtime())
+    state[_RUNTIME] = int(curtime()) + delay
     sample:int = 128
 
-    while state[3] < state[4]: #still playing
-        if not state[0]: #first buffer
-            sample = b1[state[1]]
+    while state[_CURRENT_SAMPLE] < state[_TOTAL_SAMPLES]: #still playing
+        if not state[_CURRENT_BUFFER]: #first buffer
+            sample = 0b11111111 & b1[state[_POS_IN_BUFFER]]
         else: # second buffer
-            sample = b2[state[1]]
-        sample &= 0b11111111 # 8-bit samples
-        state[3] += 1
-        state[1] += 1
-        if state[1] >= state[2]: #end of buffer
-            state[5+state[0]] = 1 #set flag
-            state[0] ^= 1 #swap buffers
-            state[1] = 0
-        while int(curtime()) < nexttime: pass
+            sample = 0b11111111 & b2[state[_POS_IN_BUFFER]]
+        state[_CURRENT_SAMPLE] += 1
+        state[_POS_IN_BUFFER] += 1
+        if state[_POS_IN_BUFFER] >= state[_BUFSIZE]: #end of buffer
+            state[_BUF1_NEEDS_FILLING+state[_CURRENT_BUFFER]] = 1 #set flag
+            state[_CURRENT_BUFFER] ^= 1 #swap buffers
+            state[_POS_IN_BUFFER] = 0
+        while int(curtime()) < state[_RUNTIME]: pass
         setwidth(sample << 8)
-        nexttime += delay
+        state[_RUNTIME] += delay
+
     print("Thread ended")
     stop()
 
+def get_runtime():
+    global bufstate
+    _, _, _, _, _, _, _, thread_start_time, thread_runtime, = struct.unpack("<IIIIIIIII", bufstate)
+    runtime = thread_runtime - thread_start_time
+    return runtime
+    
 #TODO: probably needs changing is from BadApple github
-def play():
+def play(callback):
     global playing
     playing = True
     print("playing...")
     #thumby.audio.set(80000)
-    _thread.start_new_thread(audioloop, ())
+    _thread.start_new_thread(audioloop, (callback, ))
 
 #TODO: remove this its code from BadApple github
 def stop():
@@ -165,8 +184,5 @@ def load(wav_file):
     buf2 = bytearray(bufsize)
     #print(data_size)
     data_pos = data_start
-    bufstate = bytearray(struct.pack("<IIIIIII", 0, 0, bufsize, 0, data_size, 1, 1))
+    bufstate = bytearray(struct.pack("<IIIIIIIII", 0, 0, bufsize, 0, data_size, 1, 1, 0, 0))
     fillbufs()
-    
-
-

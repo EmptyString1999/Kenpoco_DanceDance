@@ -4,6 +4,9 @@ syspath.append("/Games/DanceDance") #fix imports
 import thumby
 from os import listdir #os.path.isfile doesn't exist in micropython
 
+import audio_wav as audio
+import sm_parser as sm_parser
+
 # BITMAP: width: 48, height: 31
 bars = bytearray([255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
@@ -22,23 +25,51 @@ arrow_down_sprite  = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 60, 3
 arrow_left_sprite  = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 20, 32)
 arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 47, 32, mirrorX=1)
 
+# Thumby Display Config
 thumby.DISPLAY_W = 72
 thumby.DISPLAY_H = 40
-
 thumby.display.setFPS(30)
-has_audio = True
-if not "7colors_8bit.wav" in listdir("/Games/DanceDance"): playaudio = False
 
-#NOTE: in future put song select here
-if has_audio:
-    import audio_wav as audio
-    audio_bytes = open("/Games/DanceDance/7colors_8bit.wav", "rb")
-    audio.load(audio_bytes)
-    audio.play()
+# Audio Initalisation
+audio_time = 0
+audio_file_exists = True
+sm_file_exists = True
+#TODO: put song select here
+song = "7colors_8bit.wav"
+if not song in listdir("/Games/DanceDance"): audio_file_exists = False
+song_sm= "7_colors.sm"
+if not song_sm in listdir("/Games/DanceDance"): sm_file_exists = False
+
+# Note data stored as '1000 9.230769230769232'
+note_data = {}
 
 running = True
 frame_count = 0
+
+def time_update_callback(time_step:float):
+    global audio_time
+    audio_time += time_step
+
+print(f"sm_file_exists: {sm_file_exists}")
+if sm_file_exists:
+    sm_file = open("/Games/DanceDance/7_colors.sm", "r")
+    sm_text = sm_file.read()
+    sm_file.close()
+    sm_lines = sm_text.splitlines()
+    note_data = sm_parser.parse_sm_file(sm_lines)
+    del sm_text
+    del sm_lines
+
+
+if audio_file_exists:
+    audio_bytes = open("/Games/DanceDance/7colors_8bit.wav", "rb")
+    audio.load(audio_bytes)
+    audio.play(time_update_callback)
+
+print(note_data)
+
 while(running):
+    #print(running)
     # Input
     if thumby.buttonU.pressed():
         arrow_up_sprite.setFrame(1)
@@ -60,6 +91,9 @@ while(running):
     # Update logic
     frame = frame_count % 8
     audio.fillbufs()
+    runtime_us = audio.get_runtime()
+    runtime = float(runtime_us / 100_000_0)
+    print("Runtime" + str(runtime))
 
     # Draw
     thumby.display.fill(0)
