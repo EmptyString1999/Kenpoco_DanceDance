@@ -65,7 +65,6 @@ def parse_sm_file(sm_file: list[str]):
                 else:
                     measure.append(None)
         elif line.startswith((',', ';')): # marks the end of each measure
-            print("notes_and_timings")
             notes_and_timings = calculate_timing(measure, measure_index, bpm, offset)
             note_data[current_difficulty].extend(notes_and_timings)
             measure.clear()
