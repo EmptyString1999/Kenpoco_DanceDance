@@ -74,7 +74,7 @@ def parse_sm_file(sm_file: list[str]):
 
 def main():
     #start_time = time.time()
-    sm_file = open("src/DanceDance/7_colors_full.sm", "r")
+    sm_file = open("src/DanceDance/7_colors.sm", "r")
     note_data = parse_sm_file(sm_file.read().splitlines())
     print(f"Note Data: {note_data}")
     #end_time = time.time()
