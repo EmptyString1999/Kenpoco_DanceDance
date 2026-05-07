@@ -8,6 +8,10 @@ import time
 import audio_wav as audio
 import sm_parser as sm_parser
 
+DIFFICULTY     = const("Beginner")
+NOTE_DROP_TIME = const(0.9) #const(2.0)
+HIT_THRESHOLD  = const(0.18)
+
 # BITMAP: width: 48, height: 31
 bars = bytearray([255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
@@ -30,22 +34,6 @@ arrow_left_sprite  = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 20, 3
 arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 47, 32, mirrorX=1)
 single_note_sprite = thumby.Sprite(5, 5, single_note)
 
-"""
-34
-\/
-|    |  |    |  |    |  |    |
-|    |  |    |  |    |  |    |
-|    |  |    |  |    |  |    |
-|    |  |    |  |    |  |    |
-|    |  |    |  |    |  |    |
-|----|  |----|  |----|  |----|
-
-left_buffer  = 34 + 2 + 00 = 36
-down_buffer  = 34 + 2 + 11 = 47
-up_buffer    = 34 + 2 + 22 = 58 
-right_buffer = 34 + 2 + 33 = 69
-"""
-
 note_bufsize = 30
 left_buffer  = bytearray(note_bufsize)
 down_buffer  = bytearray(note_bufsize)
@@ -61,25 +49,50 @@ thumby.display.setFPS(30)
 audio_time = 0
 audio_file_exists = True
 sm_file_exists = True
+
 #TODO: put song select here
-song = "7colors_8bit.wav"
+song    = "7colors_8bit.wav"
+song_sm = "7_colors.sm"
 if not song in listdir("/Games/DanceDance"): audio_file_exists = False
-song_sm= "7_colors.sm"
 if not song_sm in listdir("/Games/DanceDance"): sm_file_exists = False
 
-# Note data stored as '1000 9.230769230769232'
+# Note data stored as a Dict of Strings and floating point values: e.g. 'Beginner' : [('1000', 23.26923076923077)]
 note_data = {}
 
 # a list of audio timestamps for when the player should press a key
 upcoming_notes = []
 
-running = True
-frame_count = 0
-start_time = time.ticks_us()
+player_score = 0
 
-def time_update_callback(time_step:float):
-    global audio_time
-    audio_time += time_step
+running     = True
+frame_count = 0
+start_ticks = 0
+
+def get_current_time():
+    """
+    Returns the difference between the current thread ticks and
+    the threads starting time in ticks divided by 1,000,000 and rounded to 2dp
+    """
+    global start_ticks
+    current_ticks = time.ticks_us()
+    current_tick_diff = time.ticks_diff(current_ticks, start_ticks)
+    return round(float(current_tick_diff / 100_000_0), 1)
+
+def check_input_hit(time_note_tuple, direction_int):
+    """
+    checks if given a time note tuple and a direction pressed if a score should be given 
+    PARAMS:
+    time_note_tuple : tuple(float, string) | e.g. (32.18292839, '1001')
+    direction_int   : int                  | L=0, D=1, U=2, R=3
+    """
+    global start_ticks, player_score, upcoming_notes
+    current_time = get_current_time()
+    diff = abs(time_note_tuple[0] - current_time)
+    print("current_time: " + str(current_time) + " | upcoming_time: " + str(time_note_tuple[0]) + " | diff: " + str(diff))
+    if diff <= HIT_THRESHOLD and time_note_tuple[1][direction_int] != '0': 
+        upcoming_notes.pop(0)
+        player_score += 10
+        print("hit")
 
 print(f"sm_file_exists: {sm_file_exists}")
 if sm_file_exists:
@@ -95,42 +108,53 @@ if sm_file_exists:
 if audio_file_exists:
     audio_bytes = open("/Games/DanceDance/7colors_8bit.wav", "rb")
     audio.load(audio_bytes)
-    audio.play(time_update_callback)
+    audio.play()
 
-print(note_data)
+start_ticks = time.ticks_us()
 
 while(running):
     #print(running)
-    current_time = round(float(time.ticks_diff(time.ticks_us(), start_time) / 100_000_0), 1)
-    print(current_time)
-    print(upcoming_notes)
+    # ================
     # Input
-    if thumby.buttonU.pressed():
-        arrow_up_sprite.setFrame(1)
-    else:
-        arrow_up_sprite.setFrame(0)
-    if thumby.buttonD.pressed():
-        arrow_down_sprite.setFrame(1)
-    else:
-        arrow_down_sprite.setFrame(0)
-    if thumby.buttonL.pressed():
+    # ================
+    if thumby.buttonL.justPressed():
         arrow_left_sprite.setFrame(1)
+        if len(upcoming_notes) > 0:
+            check_input_hit(upcoming_notes[0], 0)
     else:
         arrow_left_sprite.setFrame(0)
-    if thumby.buttonR.pressed():
+
+    if thumby.buttonD.justPressed():
+        arrow_down_sprite.setFrame(1)
+        if len(upcoming_notes) > 0:
+            check_input_hit(upcoming_notes[0], 1)
+    else:
+        arrow_down_sprite.setFrame(0)
+
+    if thumby.buttonU.justPressed():
+        arrow_up_sprite.setFrame(1)
+        if len(upcoming_notes) > 0:
+            check_input_hit(upcoming_notes[0], 2)
+    else:
+        arrow_up_sprite.setFrame(0)
+
+    if thumby.buttonR.justPressed():
         arrow_right_sprite.setFrame(1)
+        if len(upcoming_notes) > 0:
+            check_input_hit(upcoming_notes[0], 3)
     else:
         arrow_right_sprite.setFrame(0)
 
+    # ================
     # Update logic
-    frame = frame_count % 8
+    # ================
     audio.fillbufs()
 
     # Shift the note by one every frame
-    left_buffer[1:]  = left_buffer[:-1]
-    down_buffer[1:]  = down_buffer[:-1]
-    up_buffer[1:]    = up_buffer[:-1]
-    right_buffer[1:] = right_buffer[:-1]
+    left_buffer  = left_buffer[-1:]  + left_buffer[:-1]
+    down_buffer  = down_buffer[-1:]  + down_buffer[:-1]
+    up_buffer    = up_buffer[-1:]    + up_buffer[:-1]
+    right_buffer = right_buffer[-1:] + right_buffer[:-1]
     # set the previous position to 0 to prevent duplication
     left_buffer[0]  = 0
     down_buffer[0]  = 0
@@ -140,25 +164,34 @@ while(running):
     # Get the audio runtime and convert it to a time stamp with 2dp (e.g. 2.25)
     runtime_us = audio.get_runtime()
     audio_runtime = round(float(runtime_us / 100_000_0), 1)
- 
-    # print("=====================================")
-    # print("Runtime: " + str(audio_runtime))
-    # print("Note Time: " + str(note_data["Beginner"][0]))
-    # print("Note Time + 2: " + str(note_data["Beginner"][0][1]))
- 
-    # If the audio_runtime plus 2 seconds is the next note segment remove the note 
+    if audio.playing == False:
+        thumby.reset()
+
+    # If the audio_runtime plus 0.9 seconds is the next note segment remove the note 
     # segment from the list and unwrap it into the respective buffers
-    if ((audio_runtime + 2) == round(note_data["Beginner"][0][1])):
-        note_str, note_time = note_data["Beginner"].pop(0)
-        upcoming_notes.append(note_time)
+    print(f"audio_runtime = {audio_runtime}")
+    frame_time = get_current_time()
+    print(f"frame_time = {frame_time}")
+    print(upcoming_notes)
+    if len(note_data[DIFFICULTY]) > 0 and (audio_runtime + NOTE_DROP_TIME) == round(note_data[DIFFICULTY][0][1]):
+        note_str, note_time = note_data[DIFFICULTY].pop(0)
+        upcoming_notes.append((note_time, note_str))
         left_buffer[0]  = int(note_str[0])
         down_buffer[0]  = int(note_str[1])
         up_buffer[0]    = int(note_str[2])
         right_buffer[0] = int(note_str[3])
-        print(note_str)
 
+    if len(upcoming_notes) > 0:
+        frame_time = get_current_time()
+        print(str(frame_time) + " | " + str(upcoming_notes[0][0]))
+        if frame_time > upcoming_notes[0][0]:
+            upcoming_notes.pop(0)
+
+    # ================
     # Draw
+    # ================
     thumby.display.fill(0)
+    thumby.display.drawText(str(player_score), 0, 0, 1)
     thumby.display.drawSprite(bars_sprite)
     thumby.display.drawSprite(arrow_up_sprite)
     thumby.display.drawSprite(arrow_down_sprite)
@@ -171,6 +204,8 @@ while(running):
                 single_note_sprite.x = 22 + (i * 13)
                 single_note_sprite.y = pos
                 thumby.display.drawSprite(single_note_sprite)
+                if pos == 29:
+                    thumby.display.drawFilledRectangle(10, 30, 10, 10, 1)
     
     thumby.display.update()
     frame_count += 1

@@ -108,7 +108,7 @@ def fillbufs():
 
 # CREDIT: Mark Batty
 @micropython.viper
-def audioloop(callback):
+def audioloop():
     from machine import PWM, Pin
     swBuzzer = PWM(Pin(28))
     swBuzzer.freq(100000)
@@ -147,12 +147,12 @@ def get_runtime():
     return runtime
     
 #TODO: probably needs changing is from BadApple github
-def play(callback):
+def play():
     global playing
     playing = True
     print("playing...")
     #thumby.audio.set(80000)
-    _thread.start_new_thread(audioloop, (callback, ))
+    _thread.start_new_thread(audioloop, ())
 
 #TODO: remove this its code from BadApple github
 def stop():
