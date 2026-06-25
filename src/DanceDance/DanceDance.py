@@ -8,9 +8,14 @@ import time
 import audio_wav as audio
 import sm_parser as sm_parser
 
-DIFFICULTY     = const("Beginner")
-NOTE_DROP_TIME = const(0.9) #const(2.0)
-HIT_THRESHOLD  = const(0.18)
+DIFFICULTY       = const("Beginner")
+NOTE_DROP_TIME   = const(0.9) #const(2.0)
+HIT_THRESHOLD    = const(0.18)
+MARVELOUS_THRESH = const(16.67) # ms
+PERFECT_THRESH   = const(33.33) # ms
+GREAT_THRESH     = const(83.33) # ms
+GOOD_THRESH      = const(123.33)# ms
+BAD_THRESH       = const(163.33)# ms
 
 # BITMAP: width: 48, height: 31
 bars = bytearray([255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
@@ -89,10 +94,26 @@ def check_input_hit(time_note_tuple, direction_int):
     current_time = get_current_time()
     diff = abs(time_note_tuple[0] - current_time)
     print("current_time: " + str(current_time) + " | upcoming_time: " + str(time_note_tuple[0]) + " | diff: " + str(diff))
-    if diff <= HIT_THRESHOLD and time_note_tuple[1][direction_int] != '0': 
+    if diff <= MARVELOUS_THRESH / 1000 and time_note_tuple[1][direction_int] != '0':
+        upcoming_notes.pop(0)
+        player_score += 100
+        print("Marvelous hit | 100 points")
+    elif diff <= PERFECT_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+        upcoming_notes.pop(0)
+        player_score += 80
+        print("Perfect hit | 80 points")
+    elif diff <= GREAT_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+        upcoming_notes.pop(0)
+        player_score += 50
+        print("Great hit | 50 points")
+    elif diff <= GOOD_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+        upcoming_notes.pop(0)
+        player_score += 20
+        print("Good hit | 20 points")
+    elif diff <= BAD_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
         upcoming_notes.pop(0)
         player_score += 10
-        print("hit")
+        print("Bad hit | 10 points")
 
 print(f"sm_file_exists: {sm_file_exists}")
 if sm_file_exists:
@@ -184,7 +205,7 @@ while(running):
     if len(upcoming_notes) > 0:
         frame_time = get_current_time()
         print(str(frame_time) + " | " + str(upcoming_notes[0][0]))
-        if frame_time > upcoming_notes[0][0]:
+        if frame_time > upcoming_notes[0][0] + BAD_THRESH/1000:
             upcoming_notes.pop(0)
 
     # ================
@@ -204,8 +225,6 @@ while(running):
                 single_note_sprite.x = 22 + (i * 13)
                 single_note_sprite.y = pos
                 thumby.display.drawSprite(single_note_sprite)
-                if pos == 29:
-                    thumby.display.drawFilledRectangle(10, 30, 10, 10, 1)
-    
+
     thumby.display.update()
     frame_count += 1

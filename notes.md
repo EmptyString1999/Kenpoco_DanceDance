@@ -123,11 +123,8 @@ current_pos=78
 '0003 96.53846153846155'
 ]
 
-
-
-
 # Things that went Wrong
-- [ ] Audio is choppy when updating the time in the audio loop. | Fix: :(
+- [x] Audio is choppy when updating the time in the audio loop. | Fix: :(
 - [x] Reading both audio file and sm file | Fix: load sm file first parse it and then delete the read txt just keeping the data we need.
 - [x] Reading in wav files. | Fix: parse the header, get the data, stream the data with seek and read in python and fill the buffers.
 
