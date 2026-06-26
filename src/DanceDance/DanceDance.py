@@ -4,6 +4,7 @@ syspath.append("/Games/DanceDance") #fix imports
 import thumby
 from os import listdir #os.path.isfile doesn't exist in micropython
 import time
+import gc
 
 import audio_wav as audio
 import sm_parser as sm_parser
@@ -22,6 +23,7 @@ bars = bytearray([255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,25
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31])
+
 # BITMAP: width: 7, height: 7
 arrow_vert_empty = bytearray([8,116,66,65,66,116,8])
 arrow_vert_full  = bytearray([8,124,126,127,126,124,8])
@@ -33,10 +35,12 @@ single_note = bytearray([14,17,21,17,14])
 
 # Sprites
 bars_sprite        = thumby.Sprite(48, 31, bars, 20, 0)
-arrow_up_sprite    = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 34, 32)
-arrow_down_sprite  = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 60, 32, mirrorY=1)
+
 arrow_left_sprite  = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 20, 32)
-arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 47, 32, mirrorX=1)
+arrow_down_sprite  = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 34, 32, mirrorY=1)
+arrow_up_sprite    = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 47, 32)
+arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 60, 32, mirrorX=1)
+
 single_note_sprite = thumby.Sprite(5, 5, single_note)
 
 note_bufsize = 30
@@ -88,13 +92,14 @@ def check_input_hit(time_note_tuple, direction_int):
     checks if given a time note tuple and a direction pressed if a score should be given 
     PARAMS:
     time_note_tuple : tuple(float, string) | e.g. (32.18292839, '1001')
-    direction_int   : int                  | L=0, D=1, U=2, R=3
+    direction_int   : int                  | L=0, D=1, U=2, R=3, 
     """
     global start_ticks, player_score, upcoming_notes
     current_time = get_current_time()
     diff = abs(time_note_tuple[0] - current_time)
-    print("current_time: " + str(current_time) + " | upcoming_time: " + str(time_note_tuple[0]) + " | diff: " + str(diff))
-    if diff <= MARVELOUS_THRESH / 1000 and time_note_tuple[1][direction_int] != '0':
+    print("current_time: " + str(current_time) + " | upcoming_time: " + str(time_note_tuple[0]) + " | note: " + str(time_note_tuple[1]) + " | diff: " + str(diff))
+    time_note_string = time_note_tuple[1]
+    if diff <= MARVELOUS_THRESH / 1000 and time_note_string[direction_int] != '0':
         upcoming_notes.pop(0)
         player_score += 100
         print("Marvelous hit | 100 points")
@@ -117,7 +122,7 @@ def check_input_hit(time_note_tuple, direction_int):
 
 print(f"sm_file_exists: {sm_file_exists}")
 if sm_file_exists:
-    sm_file = open("/Games/DanceDance/7_colors.sm", "r")
+    sm_file = open("/Games/DanceDance/" + song_sm, "r")
     sm_text = sm_file.read()
     sm_file.close()
     sm_lines = sm_text.splitlines()
@@ -127,39 +132,38 @@ if sm_file_exists:
 
 
 if audio_file_exists:
-    audio_bytes = open("/Games/DanceDance/7colors_8bit.wav", "rb")
+    audio_bytes = open("/Games/DanceDance/" + song, "rb")
     audio.load(audio_bytes)
     audio.play()
 
 start_ticks = time.ticks_us()
 
 while(running):
-    #print(running)
     # ================
     # Input
     # ================
-    if thumby.buttonL.justPressed():
+    if thumby.buttonL.pressed():
         arrow_left_sprite.setFrame(1)
         if len(upcoming_notes) > 0:
             check_input_hit(upcoming_notes[0], 0)
     else:
         arrow_left_sprite.setFrame(0)
 
-    if thumby.buttonD.justPressed():
+    if thumby.buttonD.pressed():
         arrow_down_sprite.setFrame(1)
         if len(upcoming_notes) > 0:
             check_input_hit(upcoming_notes[0], 1)
     else:
         arrow_down_sprite.setFrame(0)
 
-    if thumby.buttonU.justPressed():
+    if thumby.buttonU.pressed():
         arrow_up_sprite.setFrame(1)
         if len(upcoming_notes) > 0:
             check_input_hit(upcoming_notes[0], 2)
     else:
         arrow_up_sprite.setFrame(0)
 
-    if thumby.buttonR.justPressed():
+    if thumby.buttonR.pressed():
         arrow_right_sprite.setFrame(1)
         if len(upcoming_notes) > 0:
             check_input_hit(upcoming_notes[0], 3)
@@ -188,12 +192,12 @@ while(running):
     if audio.playing == False:
         thumby.reset()
 
-    # If the audio_runtime plus 0.9 seconds is the next note segment remove the note 
-    # segment from the list and unwrap it into the respective buffers
+    # TODO: update comments
+    # If the audio_runtime + 0.9 seconds is the next note,
+    # remove the note from the list and unwrap it into the respective buffers
     print(f"audio_runtime = {audio_runtime}")
     frame_time = get_current_time()
     print(f"frame_time = {frame_time}")
-    print(upcoming_notes)
     if len(note_data[DIFFICULTY]) > 0 and (audio_runtime + NOTE_DROP_TIME) == round(note_data[DIFFICULTY][0][1]):
         note_str, note_time = note_data[DIFFICULTY].pop(0)
         upcoming_notes.append((note_time, note_str))
@@ -214,9 +218,9 @@ while(running):
     thumby.display.fill(0)
     thumby.display.drawText(str(player_score), 0, 0, 1)
     thumby.display.drawSprite(bars_sprite)
-    thumby.display.drawSprite(arrow_up_sprite)
-    thumby.display.drawSprite(arrow_down_sprite)
     thumby.display.drawSprite(arrow_left_sprite)
+    thumby.display.drawSprite(arrow_down_sprite)
+    thumby.display.drawSprite(arrow_up_sprite)
     thumby.display.drawSprite(arrow_right_sprite)
 
     for i, buf in enumerate((left_buffer, down_buffer, up_buffer, right_buffer)):

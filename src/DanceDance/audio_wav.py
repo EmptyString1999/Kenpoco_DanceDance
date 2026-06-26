@@ -17,6 +17,7 @@ data_size = 0
 data_pos = 0
 
 #current buffer, pos in buffer, bufsize, current sample, total samples, buf1NeedsFilling, buf2NeedsFilling, startTime, runtime
+
 bufstate = bytearray(struct.pack("<9I", 0, 0, bufsize, 0, 0, 1, 1, 0, 0))
 # TODO: check if these are optimised out
 _CURRENT_BUFFER = const(0)
@@ -145,7 +146,7 @@ def get_runtime():
     _, _, _, _, _, _, _, thread_start_time, thread_runtime, = struct.unpack("<IIIIIIIII", bufstate)
     runtime = time.ticks_diff(thread_runtime, thread_start_time)
     return runtime
-    
+
 #TODO: probably needs changing is from BadApple github
 def play():
     global playing
