@@ -241,7 +241,6 @@ while(running):
     thumby.display.drawSprite(arrow_right_sprite)
 
     for i, buf in enumerate((left_buffer, down_buffer, up_buffer, right_buffer)):
-        should_hold_note[i] = False
         for pos, note in enumerate(buf):
             #NOTE: Single tap notes
             if note == 1:
