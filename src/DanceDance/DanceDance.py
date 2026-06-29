@@ -43,11 +43,18 @@ arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 60, 3
 
 single_note_sprite = thumby.Sprite(5, 5, single_note)
 
+# Lane Buffers
 note_bufsize = 30
 left_buffer  = bytearray(note_bufsize)
 down_buffer  = bytearray(note_bufsize)
 up_buffer    = bytearray(note_bufsize)
 right_buffer = bytearray(note_bufsize)
+
+# DPAD Input State
+left_held = False
+down_held = False
+up_held = False
+right_held = False
 
 # Thumby Display Config
 thumby.DISPLAY_W = 72
@@ -103,19 +110,19 @@ def check_input_hit(time_note_tuple, direction_int):
         upcoming_notes.pop(0)
         player_score += 100
         print("Marvelous hit | 100 points")
-    elif diff <= PERFECT_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+    elif diff <= PERFECT_THRESH / 1000 and time_note_string[direction_int] != '0': 
         upcoming_notes.pop(0)
         player_score += 80
         print("Perfect hit | 80 points")
-    elif diff <= GREAT_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+    elif diff <= GREAT_THRESH / 1000 and time_note_string[direction_int] != '0': 
         upcoming_notes.pop(0)
         player_score += 50
         print("Great hit | 50 points")
-    elif diff <= GOOD_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+    elif diff <= GOOD_THRESH / 1000 and time_note_string[direction_int] != '0': 
         upcoming_notes.pop(0)
         player_score += 20
         print("Good hit | 20 points")
-    elif diff <= BAD_THRESH / 1000 and time_note_tuple[1][direction_int] != '0': 
+    elif diff <= BAD_THRESH / 1000 and  time_note_string[direction_int] != '0': 
         upcoming_notes.pop(0)
         player_score += 10
         print("Bad hit | 10 points")
@@ -190,7 +197,7 @@ while(running):
     runtime_us = audio.get_runtime()
     audio_runtime = round(float(runtime_us / 100_000_0), 1)
     if audio.playing == False:
-        thumby.reset()
+        running = False
 
     # TODO: update comments
     # If the audio_runtime + 0.9 seconds is the next note,
