@@ -143,7 +143,7 @@ def audioloop():
 
 def get_runtime():
     global bufstate
-    _, _, _, _, _, _, _, thread_start_time, thread_runtime, = struct.unpack("<IIIIIIIII", bufstate)
+    _, _, _, _, _, _, _, thread_start_time, thread_runtime, = struct.unpack("<9I", bufstate)
     runtime = time.ticks_diff(thread_runtime, thread_start_time)
     return runtime
 
