@@ -104,6 +104,22 @@ def get_current_time():
     current_tick_diff = time.ticks_diff(current_ticks, start_ticks)
     return round(float(current_tick_diff / 100_000_0), 1)
 
+def remove_note_from_buffer(buffer_int):
+    global left_buffer, down_buffer, up_buffer, right_buffer
+    buffer = []
+    if buffer_int == 0:
+        buffer = left_buffer
+    elif buffer_int ==  1:
+        buffer = down_buffer
+    elif buffer_int ==  2:
+        buffer = up_buffer
+    elif buffer_int ==  3:
+        buffer = right_buffer
+    for i, note in enumerate(reversed(buffer)):
+        if note != 0:
+            buffer[len(buffer) - 1 - i] = 0
+            break
+
 def check_input_hit(time_note_tuple, direction_int):
     """
     checks if given a time note tuple and a direction pressed if a score should be given 
@@ -118,22 +134,27 @@ def check_input_hit(time_note_tuple, direction_int):
     time_note_string = time_note_tuple[1] # e.g. '1001'
     if diff <= MARVELOUS_THRESH / 1000 and time_note_string[direction_int] == '1':
         upcoming_notes.pop(0)
+        remove_note_from_buffer(direction_int)
         player_score += 100
         print("Marvelous hit | 100 points")
     elif diff <= PERFECT_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
+        remove_note_from_buffer(direction_int)
         player_score += 80
         print("Perfect hit | 80 points")
     elif diff <= GREAT_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
+        remove_note_from_buffer(direction_int)
         player_score += 50
         print("Great hit | 50 points")
     elif diff <= GOOD_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
+        remove_note_from_buffer(direction_int)
         player_score += 20
         print("Good hit | 20 points")
     elif diff <= BAD_THRESH / 1000 and  time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
+        remove_note_from_buffer(direction_int)
         player_score += 10
         print("Bad hit | 10 points")
 
@@ -247,7 +268,6 @@ while(running):
                 single_note_sprite.x = 22 + (i * 13)
                 single_note_sprite.y = pos
                 thumby.display.drawSprite(single_note_sprite)
-
 
     thumby.display.update()
     frame_count += 1
