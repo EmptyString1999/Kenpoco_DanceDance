@@ -4,7 +4,6 @@ syspath.append("/Games/DanceDance") #fix imports
 import thumby
 from os import listdir #os.path.isfile doesn't exist in micropython
 import time
-import gc
 
 import audio_wav as audio
 import sm_parser as sm_parser
@@ -18,20 +17,24 @@ GREAT_THRESH     = const(83.33) # ms
 GOOD_THRESH      = const(123.33)# ms
 BAD_THRESH       = const(163.33)# ms
 
-# BITMAP: width: 48, height: 31
+# Note Lanes BITMAP: width: 48, height: 31
 bars = bytearray([255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,0,0,0,0,255,0,0,0,0,0,0,0,255,
            31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31,0,0,0,0,31,32,64,64,64,64,64,32,31])
 
-# BITMAP: width: 7, height: 7
+# Arrow BITMAPS: width: 7, height: 7
 arrow_vert_empty = bytearray([8,116,66,65,66,116,8])
 arrow_vert_full  = bytearray([8,124,126,127,126,124,8])
 arrow_hori_empty = bytearray([8,20,34,65,34,34,62])
 arrow_hori_full  = bytearray([8,28,62,127,62,62,62])
 
-# BITMAP: width: 5, height: 5
+# Note BITMAP: width: 5, height: 5
 single_note = bytearray([14,17,21,17,14])
+
+hold_note_start = bytearray([15,16,23,16,15])
+hold_note_middle = bytearray([31,0,31,0,31])
+hold_note_end = bytearray([30,1,29,1,30])
 
 # Sprites
 bars_sprite        = thumby.Sprite(48, 31, bars, 20, 0)
@@ -41,20 +44,27 @@ arrow_down_sprite  = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 34, 3
 arrow_up_sprite    = thumby.Sprite(7, 7, arrow_vert_empty+arrow_vert_full, 47, 32)
 arrow_right_sprite = thumby.Sprite(7, 7, arrow_hori_empty+arrow_hori_full, 60, 32, mirrorX=1)
 
-single_note_sprite = thumby.Sprite(5, 5, single_note)
+single_note_sprite      = thumby.Sprite(5, 5, single_note)
+hold_note_start_sprite  = thumby.Sprite(5, 5, hold_note_start)
+hold_note_middle_sprite = thumby.Sprite(5, 5, hold_note_middle)
+hold_note_end_sprite    = thumby.Sprite(5, 5, hold_note_end)
 
 # Lane Buffers
-note_bufsize = 30
-left_buffer  = bytearray(note_bufsize)
-down_buffer  = bytearray(note_bufsize)
-up_buffer    = bytearray(note_bufsize)
-right_buffer = bytearray(note_bufsize)
+track_bufsize = 30
+left_buffer  = bytearray(track_bufsize)
+down_buffer  = bytearray(track_bufsize)
+up_buffer    = bytearray(track_bufsize)
+right_buffer = bytearray(track_bufsize)
 
 # DPAD Input State
-left_held = False
-down_held = False
-up_held = False
+left_held  = False
+down_held  = False
+up_held    = False
 right_held = False
+
+# Flags for if a lane currently has a hold note
+# Left: 0, Down: 1, Up: 2, Right: 3
+should_hold_note = [False, False, False, False]
 
 # Thumby Display Config
 thumby.DISPLAY_W = 72
@@ -105,24 +115,24 @@ def check_input_hit(time_note_tuple, direction_int):
     current_time = get_current_time()
     diff = abs(time_note_tuple[0] - current_time)
     print("current_time: " + str(current_time) + " | upcoming_time: " + str(time_note_tuple[0]) + " | note: " + str(time_note_tuple[1]) + " | diff: " + str(diff))
-    time_note_string = time_note_tuple[1]
-    if diff <= MARVELOUS_THRESH / 1000 and time_note_string[direction_int] != '0':
+    time_note_string = time_note_tuple[1] # e.g. '1001'
+    if diff <= MARVELOUS_THRESH / 1000 and time_note_string[direction_int] == '1':
         upcoming_notes.pop(0)
         player_score += 100
         print("Marvelous hit | 100 points")
-    elif diff <= PERFECT_THRESH / 1000 and time_note_string[direction_int] != '0': 
+    elif diff <= PERFECT_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
         player_score += 80
         print("Perfect hit | 80 points")
-    elif diff <= GREAT_THRESH / 1000 and time_note_string[direction_int] != '0': 
+    elif diff <= GREAT_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
         player_score += 50
         print("Great hit | 50 points")
-    elif diff <= GOOD_THRESH / 1000 and time_note_string[direction_int] != '0': 
+    elif diff <= GOOD_THRESH / 1000 and time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
         player_score += 20
         print("Good hit | 20 points")
-    elif diff <= BAD_THRESH / 1000 and  time_note_string[direction_int] != '0': 
+    elif diff <= BAD_THRESH / 1000 and  time_note_string[direction_int] == '1': 
         upcoming_notes.pop(0)
         player_score += 10
         print("Bad hit | 10 points")
@@ -231,11 +241,14 @@ while(running):
     thumby.display.drawSprite(arrow_right_sprite)
 
     for i, buf in enumerate((left_buffer, down_buffer, up_buffer, right_buffer)):
+        should_hold_note[i] = False
         for pos, note in enumerate(buf):
+            #NOTE: Single tap notes
             if note == 1:
                 single_note_sprite.x = 22 + (i * 13)
                 single_note_sprite.y = pos
                 thumby.display.drawSprite(single_note_sprite)
+
 
     thumby.display.update()
     frame_count += 1
